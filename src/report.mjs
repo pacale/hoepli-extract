@@ -43,6 +43,8 @@ export function buildReport({
       bytes: download?.bytes ?? 0,
       md5_verified: download?.md5ok ?? 0,
       decrypted_assets: download?.decrypted ?? 0,
+      resumed_from_cache: download?.resumed ?? 0,
+      retried: download?.retried ?? 0,
       failures: download?.failed ?? [],
     },
     merge: merge ?? null,
@@ -60,11 +62,18 @@ export function printSummary(report) {
   console.log(`  manifest  ${report.manifest.pages} pages, ${report.manifest.toc_entries} outline entries`);
   console.log(
     `  download  ${report.download.files} files, ${formatBytes(report.download.bytes)}, ` +
-      `md5 ${report.download.md5_verified}/${report.download.files}`
+      `md5 ${report.download.md5_verified}/${report.download.files}` +
+      (report.download.resumed_from_cache ? `, ${report.download.resumed_from_cache} dalla cache` : '') +
+      (report.download.retried ? `, ${report.download.retried} ritentate` : '')
   );
   if (report.download.failed) {
     console.log(`  failed    ${report.download.failed.length} page(s)`);
-    for (const f of report.download.failed.slice(0, 10)) console.log(`            - #${f.order} ${f.code}: ${f.error}`);
+    for (const f of report.download.failed.slice(0, 10)) {
+      console.log(`            - #${f.order} ${f.code} [${f.kind || 'network'}]: ${f.error}`);
+    }
+  }
+  if (report.merge?.skipped?.length) {
+    console.log(`  skipped   ${report.merge.skipped.length} unreadable page file(s) at merge time`);
   }
   if (report.merge) {
     console.log(`  merged    ${report.merge.pages} pages, ${report.merge.outline} outline entries, ${formatBytes(report.merge.bytes)}`);

@@ -5,6 +5,7 @@
 // linked as a doubly linked list and nested by level.
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { PDFDocument, PDFName, PDFHexString, PDFDict, PDFNumber, PDFRef } from 'pdf-lib';
 import { log } from './util.mjs';
 
@@ -60,17 +61,37 @@ function buildOutline(doc, toc) {
 
 /**
  * Merge page files into one PDF.
- * @returns {Promise<{pages: number, outline: number, bytes: number}>}
+ * @returns {Promise<{pages: number, outline: number, bytes: number, skipped: object[]}>}
  */
 export async function mergePages({ files, outFile, toc = [], metadata = {}, onProgress }) {
   const merged = await PDFDocument.create();
+  const skipped = [];
   let index = 0;
+  // pdf-lib keeps the whole document in memory: warn on very large books.
+  const estimatedMb = files.reduce((sum, f) => {
+    try {
+      return sum + fs.statSync(f).size;
+    } catch {
+      return sum;
+    }
+  }, 0) / 1048576;
+  if (files.length > 1500 || estimatedMb > 400) {
+    log.warn(
+      `large book: ${files.length} pages (${estimatedMb.toFixed(0)} MB) - the merge keeps everything in memory`
+    );
+  }
   for (const file of files) {
-    const bytes = fs.readFileSync(file);
-    const src = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
-    const indices = src.getPageIndices();
-    const copied = await merged.copyPages(src, indices);
-    for (const page of copied) merged.addPage(page);
+    try {
+      const bytes = fs.readFileSync(file);
+      const src = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
+      const indices = src.getPageIndices();
+      const copied = await merged.copyPages(src, indices);
+      for (const page of copied) merged.addPage(page);
+    } catch (e) {
+      // One damaged page must not throw away the whole export.
+      skipped.push({ file, error: e.message });
+      log.warn(`skipping unreadable page ${path.basename(file)}: ${e.message}`);
+    }
     index++;
     if (onProgress && index % 50 === 0) onProgress({ done: index, total: files.length });
   }
@@ -87,7 +108,7 @@ export async function mergePages({ files, outFile, toc = [], metadata = {}, onPr
 
   const bytes = await merged.save({ useObjectStreams: true, addDefaultPage: false });
   fs.writeFileSync(outFile, bytes);
-  return { pages: merged.getPageCount(), outline, bytes: bytes.length };
+  return { pages: merged.getPageCount(), outline, bytes: bytes.length, skipped };
 }
 
 /** Read back the outline of a saved document (used by the verification step). */

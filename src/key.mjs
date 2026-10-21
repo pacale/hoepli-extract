@@ -35,7 +35,7 @@ const HOOK = `(() => {
 
 export async function captureKey({ port, bookId, assetUrl, timeoutMs = 90000, attempts = 2 }) {
   const readerUrl = `https://my.hoepliacademy.it/#/books/${bookId}?page=1`;
-  const { cdp, target } = await attachPage(port, { url: readerUrl });
+  const { cdp, target, opened } = await attachPage(port, { url: readerUrl });
   try {
     // The hook must be in place before the application boots, so it is
     // registered for new documents and the page is then reloaded.
@@ -64,7 +64,9 @@ export async function captureKey({ port, bookId, assetUrl, timeoutMs = 90000, at
     );
   } finally {
     cdp.close();
-    await closeTab(port, target.id).catch(() => {});
+    // Only close a tab we opened ourselves: closing somebody else's tab
+    // would be rude, and closing the last tab quits the browser.
+    if (opened) await closeTab(port, target.id).catch(() => {});
   }
 }
 

@@ -182,6 +182,7 @@ menu.
 --token <string>    AUTH_TOKEN (otherwise read from the account)
 --port <n>          DevTools port to use (default 9222)
 --headless          start the dedicated browser without a window (servers)
+--keep-browser      do not close the browser the tool started
 --open / --no-open  open the PDF when the export finishes
 --yes               do not ask for confirmation
 --no-toc            do not build the outline
@@ -207,6 +208,35 @@ menu.
 
 Change it with `hoepli config set outputDir "D:\Books"` (the `set` keyword is
 optional) and read it back with `hoepli config`.
+
+## Stability
+
+The tool is built to survive a flaky network and a platform that changes under
+its feet:
+
+- every page is checked against the **MD5 the platform publishes** before it
+  is written to disk: a corrupted download is rejected, retried and reported,
+  and can never end up in the PDF;
+- a page file that cannot be read is skipped instead of throwing away the
+  whole merge;
+- the finished PDF is compared with the `page_count` the platform announces,
+  so a book with missing pages is never reported as "OK";
+- every API call has a 30 s timeout and one retry with jittered backoff;
+- the pages that fail are retried in a second, gentler pass;
+- an expired session is refreshed and the run continues;
+- a full disk aborts immediately with a clear message instead of failing 706
+  times;
+- two runs on the same book are serialised by a lock file;
+- the browser the tool started for itself is closed at the end of the export
+  (that frees about 630 MB of RAM; the session stays in the profile). Use
+  `--keep-browser` to leave it open.
+
+`hoepli doctor` checks all of this, and with a valid session it also verifies
+the **whole export chain** (session → key → decryption of a real page → MD5) in
+about 15 seconds, so you know before starting a long export whether it will
+work. `--quick` skips that part.
+
+The measurements are in [`docs/performance.md`](docs/performance.md).
 
 ## Troubleshooting
 
@@ -279,6 +309,8 @@ The end-to-end test needs a signed-in session and is documented in
 
 - [`docs/architecture.md`](docs/architecture.md) — the asset container format,
   the API map and the crypto flow
+- [`docs/performance.md`](docs/performance.md) — how the tool is measured, and
+  what the stability work changed
 
 ## Guida in italiano
 
@@ -358,6 +390,7 @@ uno si apre il menu.
 --cookie/--token    sessione manuale, senza browser
 --port <n>          porta DevTools (default 9222)
 --headless          browser senza finestra (server)
+--keep-browser      non chiudere il browser avviato dal tool
 --open/--no-open    apre o non apre il PDF alla fine
 --yes               non chiede conferme
 --keep-pages        conserva le pagine singole

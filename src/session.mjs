@@ -19,6 +19,26 @@ export class SessionError extends Error {
   }
 }
 
+/** Translate a platform status into something a user can act on. */
+export function describeStatus(status) {
+  switch (status) {
+    case 401:
+      return 'HTTP 401 (session expired, sign in again)';
+    case 403:
+      return 'HTTP 403 (your account is not licensed for this book)';
+    case 404:
+      return 'HTTP 404 (the book does not exist or is not available)';
+    case 429:
+      return 'HTTP 429 (too many requests, slow down)';
+    case 500:
+    case 502:
+    case 503:
+      return `HTTP ${status} (the platform is having trouble, retrying)`;
+    default:
+      return `HTTP ${status}`;
+  }
+}
+
 export class Session {
   constructor(cookie, token) {
     this.cookie = cookie;
@@ -37,22 +57,38 @@ export class Session {
     return h;
   }
 
-  async request(path, { method = 'GET', body, headers = {}, retry = true } = {}) {
+  async request(path, { method = 'GET', body, headers = {}, retry = true, timeoutMs = 30000 } = {}) {
     const init = { method, headers: this.headers(headers) };
     if (body !== undefined) {
       init.body = typeof body === 'string' ? body : JSON.stringify(body);
       init.headers['Content-Type'] = 'application/json';
     }
-    const res = await fetch(API_BASE + path, init);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(API_BASE + path, { ...init, signal: controller.signal });
+    } catch (e) {
+      clearTimeout(timer);
+      const aborted = e?.name === 'AbortError';
+      if (retry) {
+        log.debug(`${method} ${path} ${aborted ? 'timed out' : e.message}, retrying`);
+        return this.request(path, { method, body, headers, retry: false, timeoutMs });
+      }
+      throw new SessionError(
+        aborted ? `${method} ${path} timed out after ${timeoutMs}ms` : `${method} ${path} failed: ${e.message}`
+      );
+    }
+    clearTimeout(timer);
     if (res.status === 401 && retry && this.token) {
       log.debug('token rejected, refreshing');
       await this.refreshToken();
-      return this.request(path, { method, body, headers, retry: false });
+      return this.request(path, { method, body, headers, retry: false, timeoutMs });
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new SessionError(
-        `${method} ${path} -> HTTP ${res.status} ${redact(text).slice(0, 200)}`,
+        `${method} ${path} -> ${describeStatus(res.status)} ${redact(text).slice(0, 200)}`,
         res.status
       );
     }
@@ -65,11 +101,23 @@ export class Session {
   }
 
   async refreshToken() {
-    const res = await fetch(`${API_BASE}/api/v6/user`, { headers: this.headers({ AUTH_TOKEN: undefined }) });
-    if (!res.ok) throw new SessionError(`cannot refresh session: HTTP ${res.status}`, res.status);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/api/v6/user`, {
+        headers: this.headers({ AUTH_TOKEN: undefined }),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      throw new SessionError(`cannot refresh the session: ${e.message}`);
+    }
+    clearTimeout(timer);
+    if (!res.ok) throw new SessionError(`cannot refresh the session: ${describeStatus(res.status)}`, res.status);
     const user = await res.json();
     this.token = user?.auth_token || null;
-    if (!this.token) throw new SessionError('server did not return an auth_token');
+    if (!this.token) throw new SessionError('the server did not return an auth_token');
     return this.token;
   }
 

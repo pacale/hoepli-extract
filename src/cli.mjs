@@ -3,8 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { log, setLogLevel, safeName, safeText, formatBytes, homeDir } from './util.mjs';
-import { ensureBrowser, readCookies, openTab, listTargets, chromePath } from './browser.mjs';
+import { ensureBrowser, readCookies, openTab, listTargets, closeBrowser, attachedProfile, chromePath } from './browser.mjs';
 import { Session, SessionError, waitForAuthentication, READER_BASE } from './session.mjs';
+import { acquireLock } from './lock.mjs';
 import {
   fetchBooks,
   fetchBookDetail,
@@ -57,7 +58,7 @@ Usage
   hoepli books [--json]               list the books of your account
   hoepli info <id|titolo> [--json]    metadata and page plan, nothing downloaded
   hoepli key [--book <id>]            show the key the client uses
-  hoepli doctor [--launch]            check the environment
+  hoepli doctor [--launch] [--quick]   check the environment (and the export chain)
   hoepli install | uninstall          global command, shortcut, configuration
   hoepli config [key [value]]         show or change the configuration
 
@@ -113,6 +114,18 @@ async function resolveSession(args, config, { needBrowser = true } = {}) {
     url: `${READER_BASE}/`,
     headless: Boolean(args.headless),
   });
+  if (!browser.owned) {
+    // We are using somebody else's browser: a different profile means
+    // different cookies, which is worth pointing out.
+    const profile = await attachedProfile(port).catch(() => null);
+    const ours = path.join(homeDir(), 'chrome-profile');
+    if (profile && path.resolve(profile) !== path.resolve(ours)) {
+      log.warn(
+        `the browser on :${port} uses another profile (${profile}); if the sign-in is missing ` +
+          'run "hoepli doctor --launch" to start the browser of the tool'
+      );
+    }
+  }
   const probe = async () => {
     const { header } = await readCookies(browser.port);
     if (!header) return null;
@@ -180,7 +193,9 @@ function outputFileFor(book, config, args) {
 }
 
 async function cmdDoctor(args) {
-  await runDoctor({ launch: !!args.launch });
+  const config = configFromArgs(args);
+  const deep = args.deep ? true : !args.quick;
+  await runDoctor({ launch: !!args.launch, deep, port: config.port });
 }
 
 async function cmdBooks(args) {
@@ -323,70 +338,98 @@ async function cmdBook(args, { book: presetBook = null } = {}) {
 
   const workDir = path.join(homeDir(), 'work', String(details.id));
   const pagesDir = path.join(workDir, 'pages');
-  const downloadProgress = createProgress({ total: pages.length, label: 'download' });
-  downloadProgress.start();
-  const download = await downloadPages({
-    pages,
-    outDir: pagesDir,
-    key: keyInfo.key,
-    concurrency: config.concurrency,
-    keepPages: true,
-    onProgress: ({ done, total, bytes }) => downloadProgress.update(done, bytes),
-  });
-  downloadProgress.stop(`${download.files.length} pagine scaricate (${formatBytes(download.bytes)})`);
-
-  fs.mkdirSync(path.dirname(outFile), { recursive: true });
-
+  const lock = await acquireLock(workDir);
+  let download = null;
   let merge = null;
-  if (!args['no-merge']) {
-    const toc = args['no-toc'] ? [] : manifest.toc;
-    const mergeProgress = createProgress({ total: download.files.length, label: 'merge' });
-    mergeProgress.start();
-    merge = await mergePages({
-      files: download.files,
-      outFile,
-      toc,
-      metadata: {
-        title: details.title,
-        author: details.author,
-        subject: `HoepliAcademy+ book ${details.id} (revision ${details.revision})`,
-        keywords: ['hoepli', 'ebook', 'offline'],
-        creator: 'hoepli-extract',
-      },
-      onProgress: ({ done, total }) => mergeProgress.update(done, 0),
+  let verification = null;
+  try {
+    const downloadProgress = createProgress({ total: pages.length, label: 'download' });
+    downloadProgress.start();
+    download = await downloadPages({
+      pages,
+      outDir: pagesDir,
+      key: keyInfo.key,
+      concurrency: config.concurrency,
+      keepPages: true,
+      onProgress: ({ done, total, bytes }) => downloadProgress.update(done, bytes),
     });
-    mergeProgress.stop(`${merge.pages} pagine unite, ${merge.outline} segnalibri`);
-    log.info(`output: ${outFile} (${formatBytes(merge.bytes)})`);
-  }
+    downloadProgress.stop(`${download.files.length} pagine scaricate (${formatBytes(download.bytes)})`);
 
-  const verification = await verifyOutput({
-    file: outFile,
-    expectedPages: args['no-merge'] ? null : merge?.pages,
-    expectOutline: args['no-toc'] || args['no-merge'] ? null : merge?.outline,
-  });
+    if (download.failed.length) {
+      warnings.push(`${download.failed.length} page(s) could not be downloaded and are missing from the PDF`);
+    }
 
-  if (!args['keep-pages'] && !args['no-merge']) {
-    fs.rmSync(pagesDir, { recursive: true, force: true });
-  }
+    fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
-  const report = buildReport({
-    book: details,
-    session,
-    key: keyInfo,
-    manifest,
-    download,
-    merge,
-    verification,
-    output: outFile,
-    startedAt,
-    warnings,
-  });
-  printSummary(report);
-  writeReport(report, args.report);
+    if (!args['no-merge']) {
+      const toc = args['no-toc'] ? [] : manifest.toc;
+      const mergeProgress = createProgress({ total: download.files.length, label: 'merge' });
+      mergeProgress.start();
+      merge = await mergePages({
+        files: download.files,
+        outFile,
+        toc,
+        metadata: {
+          title: details.title,
+          author: details.author,
+          subject: `HoepliAcademy+ book ${details.id} (revision ${details.revision})`,
+          keywords: ['hoepli', 'ebook', 'offline'],
+          creator: 'hoepli-extract',
+        },
+        onProgress: ({ done, total }) => mergeProgress.update(done, 0),
+      });
+      mergeProgress.stop(`${merge.pages} pagine unite, ${merge.outline} segnalibri`);
+      log.info(`output: ${outFile} (${formatBytes(merge.bytes)})`);
+      if (merge.skipped?.length) {
+        warnings.push(`${merge.skipped.length} page file(s) were unreadable and were skipped`);
+      }
+    } else if (download.files.length === 1) {
+      fs.copyFileSync(download.files[0], outFile);
+    } else {
+      warnings.push('--no-merge keeps the single page files; nothing was written as a PDF');
+    }
 
-  if (config.openAfter && !args['no-merge']) {
-    const opened = await openFile(outFile);
-    console.log(opened ? `  aperto: ${outFile}` : `  apri manualmente: ${outFile}`);
+    // The platform is the reference: compare against the page count it
+    // publishes, not only against the files we managed to download.
+    const expected = args['no-merge'] ? null : details.page_count ?? null;
+    verification = await verifyOutput({
+      file: outFile,
+      expectedPages: expected,
+      expectOutline: args['no-toc'] || args['no-merge'] ? null : merge?.outline,
+    });
+    if (expected !== null && merge && merge.pages !== expected) {
+      verification.warnings.push(
+        `the PDF has ${merge.pages} pages, the platform announces ${expected}`
+      );
+      verification.ok = false;
+    }
+
+    if (!args['keep-pages'] && !args['no-merge']) {
+      fs.rmSync(pagesDir, { recursive: true, force: true });
+    }
+    cleanupOldCaches(homeDir(), String(details.id), 3);
+
+    const report = buildReport({
+      book: details,
+      session,
+      key: keyInfo,
+      manifest,
+      download,
+      merge,
+      verification,
+      output: outFile,
+      startedAt,
+      warnings,
+    });
+    printSummary(report);
+    writeReport(report, args.report);
+
+    if (config.openAfter && !args['no-merge'] && merge) {
+      const opened = await openFile(outFile);
+      console.log(opened ? `  aperto: ${outFile}` : `  apri manualmente: ${outFile}`);
+    }
+  } finally {
+    lock.release();
   }
 
   if (args.strict && download.failed.length) {
@@ -396,6 +439,37 @@ async function cmdBook(args, { book: presetBook = null } = {}) {
     process.exitCode = 2;
   } else if (!verification.ok) {
     process.exitCode = 2;
+  }
+  if (browser?.owned && !args['keep-browser']) {
+    await closeBrowser(browser.port);
+    log.debug('the browser started by the tool has been closed (the session stays in the profile)');
+  }
+}
+
+/** Keep the caches of the last N books, drop the older ones. */
+function cleanupOldCaches(home, keepId, keep = 3) {
+  const workRoot = path.join(home, 'work');
+  let entries = [];
+  try {
+    entries = fs.readdirSync(workRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
+  } catch {
+    return;
+  }
+  const books = entries
+    .map((e) => {
+      let mtime = 0;
+      try {
+        mtime = fs.statSync(path.join(workRoot, e.name)).mtimeMs;
+      } catch {
+        mtime = 0;
+      }
+      return { name: e.name, mtime };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+  for (const entry of books.slice(keep)) {
+    if (entry.name === keepId) continue;
+    fs.rmSync(path.join(workRoot, entry.name), { recursive: true, force: true });
+    log.debug(`removed the cache of book ${entry.name}`);
   }
 }
 

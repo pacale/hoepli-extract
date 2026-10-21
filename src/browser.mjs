@@ -5,8 +5,7 @@
 // Chrome instance with a dedicated profile, so the user's everyday browser is
 // never touched. The session cookie is read from the browser, never stored.
 
-import { spawn, execFileSync } from 'node:child_process';
-import fs from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { log, homeDir, ensureDir, sleep } from './util.mjs';
@@ -203,6 +202,48 @@ export async function listTargets(port) {
   return httpJson(port, '/json/list');
 }
 
+/** Ask the browser to quit (only ever used for an instance we started). */
+export async function closeBrowser(port) {
+  try {
+    const cdp = await Cdp.connect(await browserWsUrl(port));
+    await cdp.send('Browser.close');
+    cdp.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The --user-data-dir of the browser listening on the port, when it can be
+ * detected. Used to warn when the tool attaches to somebody else's browser
+ * (a different profile means different cookies).
+ */
+export async function attachedProfile(port) {
+  const marker = '--user-data-dir';
+  try {
+    if (process.platform === 'win32') {
+      const script = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'browser-profile.ps1');
+      const out = execFileSync(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, String(port)],
+        { encoding: 'utf8' }
+      );
+      return out.trim() || null;
+    }
+    const list = execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
+    for (const line of list.split('\n')) {
+      if (line.includes(marker) && line.includes(`remote-debugging-port=${port}`)) {
+        const i = line.indexOf(marker);
+        return line.slice(i + marker.length).trim().split(/\s+/)[0] || null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function openTab(port, url) {
   const res = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' });
   if (!res.ok) throw new Error(`cannot open tab: HTTP ${res.status}`);
@@ -221,14 +262,16 @@ export async function closeTab(port, targetId) {
 export async function attachPage(port, { url } = {}) {
   const targets = await listTargets(port);
   let target = targets.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+  let opened = false;
   if (!target && url) {
     target = await openTab(port, url);
+    opened = true;
   }
   if (!target) throw new Error('no page target available');
   const cdp = await Cdp.connect(target.webSocketDebuggerUrl);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
-  return { cdp, target };
+  return { cdp, target, opened };
 }
 
 export async function evaluate(cdp, expression, { awaitPromise = true } = {}) {
