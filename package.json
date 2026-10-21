@@ -1,6 +1,6 @@
 {
   "name": "hoepli-extract",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Download and merge the pages of a book you are licensed to read on HoepliAcademy+ into a single vector PDF.",
   "type": "module",
   "bin": {
