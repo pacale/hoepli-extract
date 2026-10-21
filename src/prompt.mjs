@@ -5,27 +5,64 @@
 
 import { spawn } from 'node:child_process';
 import readline from 'node:readline/promises';
-import { stdin, stdout } from 'node:process';
+
+// process.stdin / process.stdout are read at call time on purpose: the
+// interactive helpers can then be driven by a scripted terminal in the tests.
+let interactiveOverride = null;
+
+/** Force the interactive mode on or off (used by the tests). */
+export function setInteractive(value) {
+  interactiveOverride = value;
+}
 
 export function isInteractive() {
-  return Boolean(stdin.isTTY && stdout.isTTY);
+  if (interactiveOverride !== null) return interactiveOverride;
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+/** Words that mean "stop, do nothing". */
+const CANCEL_WORDS = new Set([
+  'nulla',
+  'niente',
+  'n',
+  'no',
+  'ne',
+  'esci',
+  'exit',
+  'quit',
+  'q',
+  'annulla',
+  'cancel',
+  'abbandona',
+]);
+
+export function isCancel(text) {
+  const value = String(text ?? '').trim().toLowerCase();
+  if (!value) return true;
+  return CANCEL_WORDS.has(value);
 }
 
 function createInterface() {
-  return readline.createInterface({ input: stdin, output: stdout });
+  return readline.createInterface({ input: process.stdin, output: process.stdout });
 }
 
-export async function confirm(question, { defaultYes = true } = {}) {
-  if (!isInteractive()) return defaultYes;
+/** Ask one question on the terminal and return the trimmed answer. */
+export async function askOnTerminal(question) {
   const rl = createInterface();
   try {
-    const hint = defaultYes ? '[Y/n]' : '[y/N]';
-    const answer = (await rl.question(`${question} ${hint} `)).trim().toLowerCase();
-    if (!answer) return defaultYes;
-    return answer === 'y' || answer === 's' || answer === 'si' || answer === 'yes';
+    return (await rl.question(question)).trim();
   } finally {
     rl.close();
   }
+}
+
+export async function confirm(question, { defaultYes = true, ask = askOnTerminal } = {}) {
+  if (!isInteractive()) return defaultYes;
+  const hint = defaultYes ? '[Y/n]' : '[y/N]';
+  const answer = (await ask(`${question} ${hint} `)).trim().toLowerCase();
+  if (!answer) return defaultYes;
+  if (isCancel(answer)) return false;
+  return answer === 'y' || answer === 's' || answer === 'si' || answer === 'yes';
 }
 
 export function formatBookLine(book, index) {
@@ -39,7 +76,10 @@ export function formatBookLine(book, index) {
  * Ask the user to choose one book.
  * @returns {Promise<object|null>} null when the user cancels
  */
-export async function pickBook(books, { title = 'I tuoi libri', emptyMessage = 'nessun libro trovato' } = {}) {
+export async function pickBook(
+  books,
+  { title = 'I tuoi libri', emptyMessage = 'nessun libro trovato', ask = askOnTerminal } = {}
+) {
   if (!books || !books.length) {
     console.log(`  ${emptyMessage}`);
     return null;
@@ -52,29 +92,24 @@ export async function pickBook(books, { title = 'I tuoi libri', emptyMessage = '
   console.log(`  ${title}`);
   books.forEach((book, i) => console.log(formatBookLine(book, i)));
   console.log('');
-  const rl = createInterface();
-  try {
-    while (true) {
-      const answer = (await rl.question('  Scegli il libro (numero o titolo, vuoto per annullare): ')).trim();
-      if (!answer) return null;
-      if (/^\d+$/.test(answer)) {
-        const book = books[Number(answer) - 1];
-        if (book) return book;
-        console.log('  quel numero non corrisponde a un libro');
-        continue;
-      }
-      const needle = answer.toLowerCase();
-      const hits = books.filter((b) => (b.title || '').toLowerCase().includes(needle));
-      if (hits.length === 1) return hits[0];
-      if (hits.length > 1) {
-        console.log('  più libri corrispondono:');
-        hits.forEach((book, i) => console.log(formatBookLine(book, i)));
-        continue;
-      }
-      console.log('  nessun libro corrisponde, riprova');
+  while (true) {
+    const answer = (await ask('  Scegli il libro (numero o titolo, vuoto o "nulla" per annullare): ')).trim();
+    if (isCancel(answer)) return null;
+    if (/^\d+$/.test(answer)) {
+      const book = books[Number(answer) - 1];
+      if (book) return book;
+      console.log('  quel numero non corrisponde a un libro');
+      continue;
     }
-  } finally {
-    rl.close();
+    const needle = answer.toLowerCase();
+    const hits = books.filter((b) => (b.title || '').toLowerCase().includes(needle));
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) {
+      console.log('  più libri corrispondono:');
+      hits.forEach((book, i) => console.log(formatBookLine(book, i)));
+      continue;
+    }
+    console.log('  nessun libro corrisponde, riprova (vuoto o "nulla" per annullare)');
   }
 }
 

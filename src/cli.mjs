@@ -117,6 +117,7 @@ async function resolveSession(args, config, { needBrowser = true } = {}) {
     url: `${READER_BASE}/`,
     headless: Boolean(args.headless),
   });
+  activeBrowser = browser;
   if (!browser.owned) {
     // We are using somebody else's browser: a different profile means
     // different cookies, which is worth pointing out.
@@ -217,6 +218,7 @@ async function cmdBooks(args) {
     );
   }
   console.log(`\n  ${books.length} book(s)\n`);
+  await closeOwnBrowser(activeBrowser, { keep: Boolean(args['keep-browser']) });
   return books;
 }
 
@@ -262,6 +264,7 @@ async function cmdInfo(args) {
   console.log(`  ${plan.pages} downloadable pages, ${plan.toc_entries} outline entries`);
   if (plan.pages_without_asset) console.log(`  ${plan.pages_without_asset} page resources without a PDF asset`);
   console.log('');
+  await closeOwnBrowser(activeBrowser, { keep: Boolean(args['keep-browser']) });
 }
 
 async function cmdKey(args) {
@@ -284,6 +287,38 @@ async function cmdKey(args) {
   console.log(key);
   console.error(`source: ${source}${validated ? ' (validated against a page asset)' : ' (not validated)'}`);
 }
+
+/**
+ * Close the browser when the tool started it. A browser that was already
+ * running belongs to the user: it is never closed, only left alone.
+ */
+let browserCloser = closeBrowser;
+
+/** Replace the browser closer (used by the tests). */
+export function setBrowserCloser(fn) {
+  browserCloser = fn;
+}
+
+async function closeOwnBrowser(browser, { keep = false } = {}) {
+  if (!browser?.owned || keep) return false;
+  const closed = await browserCloser(browser.port);
+  if (closed) log.debug('the browser started by the tool has been closed');
+  return closed;
+}
+
+/** Tell the user what happened to the browser when a run ends. */
+async function releaseBrowser(browser, args) {
+  const closed = await closeOwnBrowser(browser, { keep: Boolean(args['keep-browser']) });
+  if (closed) {
+    console.log('  chiuso il browser avviato dal tool');
+  } else if (browser?.owned) {
+    console.log('  il browser resta aperto (--keep-browser)');
+  }
+  return closed;
+}
+
+/** The browser of the current run, so it can be closed on every exit path. */
+let activeBrowser = null;
 
 async function cmdBook(args, { book: presetBook = null } = {}) {
   const startedAt = Date.now();
@@ -327,6 +362,7 @@ async function cmdBook(args, { book: presetBook = null } = {}) {
     );
     if (!ok) {
       console.log('  annullato');
+      await releaseBrowser(browser, args);
       return;
     }
   }
@@ -512,17 +548,24 @@ async function exportStandalone({ args, config, book, manifest, session, started
   }
 }
 
-async function cmdMenu(args) {
+export async function cmdMenu(
+  args,
+  { session: presetSession = null, browser: presetBrowser = null, ask, books: presetBooks = null } = {}
+) {
   const config = configFromArgs(args);
-  const { session, browser } = await resolveSession(args, config);
-  const books = await fetchBooks(session);
+  const { session, browser } = presetSession
+    ? { session: presetSession, browser: presetBrowser }
+    : await resolveSession(args, config);
+  const books = presetBooks || (await fetchBooks(session));
   if (!books.length) {
     console.log('  la tua libreria è vuota');
+    await releaseBrowser(browser, args);
     return;
   }
-  const picked = await pickBook(books);
+  const picked = await pickBook(books, { ask });
   if (!picked) {
     console.log('  annullato');
+    await releaseBrowser(browser, args);
     return;
   }
   await cmdBook(args, { book: picked });
@@ -556,8 +599,7 @@ async function cmdInstall(args) {
   runInstall({ config });
 }
 
-export async function main(argv = process.argv.slice(2)) {
-  const args = parseArgs(argv);
+export async function main(argv = process.argv.slice(2)) {  const args = parseArgs(argv);
   const command = args._[0] || (isInteractive() ? 'menu' : 'help');
   if (args.version || command === 'version' || command === '--version') {
     console.log(VERSION);
@@ -595,5 +637,7 @@ export async function main(argv = process.argv.slice(2)) {
     log.error(e.message);
     if (process.env.HOEPLI_LOG_LEVEL === 'debug') console.error(e.stack);
     process.exitCode = 1;
+    // do not leave a browser we started behind on an error path
+    await closeOwnBrowser(activeBrowser, { keep: Boolean(args['keep-browser']) }).catch(() => {});
   }
 }

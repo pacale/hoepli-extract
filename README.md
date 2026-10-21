@@ -142,13 +142,17 @@ The interactive menu looks like this:
   I tuoi libri
    1) Java — Claudio De Sio Cesari  [706 pp · ebook]
 
-  Scegli il libro (numero o titolo, vuoto per annullare): 1
+  Scegli il libro (numero o titolo, vuoto o "nulla" per annullare): 1
   Esporto "Java" (706 pagine) in C:\Users\...\Downloads? [Y/n]
 
 [####################] 100%  706/706  34.9 MB  2.4 MB/s
   706 pagine unite, 33 segnalibri
   aperto: C:\Users\...\Downloads\Java - Claudio De Sio Cesari.pdf
 ```
+
+To cancel, press enter or type `nulla` (also `n`, `no`, `esci`, `annulla`,
+`cancel`): the tool stops and closes the browser it had started. A browser
+that was **already running** is never closed — that one belongs to you.
 
 The PDF is named `<title> - <author>.pdf` and opened with the system default
 viewer when the export finishes.
@@ -354,6 +358,11 @@ Al primo avvio si apre una finestra di Chrome con il **login di
 HoepliAcademy+**: accedi lì e il tool **aspetta da solo** la sessione e
 prosegue (non devi rilanciare il comando). Nei run successivi la sessione
 viene riutilizzata.
+
+Per annullare un export premi invio o scrivi `nulla` (valgono anche `n`, `no`,
+`esci`, `annulla`, `cancel`): il tool esce e **chiude il browser che ha
+avviato lui**. Un browser che era **già aperto** non viene mai chiuso, perché
+è tuo.
 
 Il PDF viene scritto in `~/Downloads` con il nome `<titolo> - <autore>.pdf` e
 **aperto automaticamente** alla fine. La cartella si cambia con:
