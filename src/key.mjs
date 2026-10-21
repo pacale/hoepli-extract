@@ -33,48 +33,55 @@ const HOOK = `(() => {
   return 'hook-installed';
 })()`;
 
-export async function captureKey({ port, bookId, assetUrl, timeoutMs = 90000 }) {
+export async function captureKey({ port, bookId, assetUrl, timeoutMs = 90000, attempts = 2 }) {
   const readerUrl = `https://my.hoepliacademy.it/#/books/${bookId}?page=1`;
   const { cdp, target } = await attachPage(port, { url: readerUrl });
   try {
+    // The hook must be in place before the application boots, so it is
+    // registered for new documents and the page is then reloaded.
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: HOOK });
-    const current = await evaluate(cdp, 'location.href');
-    if (current && current.includes(`books/${bookId}`)) {
-      await cdp.send('Page.reload', { ignoreCache: true });
-    } else {
-      await cdp.send('Page.navigate', { url: readerUrl });
-    }
 
-    const deadline = Date.now() + timeoutMs;
-    let candidates = [];
-    while (Date.now() < deadline) {
-      await sleep(700);
-      try {
-        candidates = (await evaluate(cdp, 'JSON.stringify(window.__hoepliKeys || [])')) || [];
-        candidates = JSON.parse(candidates);
-      } catch {
-        candidates = [];
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      await cdp.send('Page.navigate', { url: readerUrl }).catch(() => {});
+      await sleep(1200);
+      // A hash-only navigation does not reload the document: force a real load
+      // so the registered script runs against a fresh application instance.
+      await cdp.send('Page.reload', { ignoreCache: false }).catch(() => {});
+
+      const found = await waitForKeys(cdp, timeoutMs / attempts);
+      if (found.length) {
+        log.debug(`observed ${found.length} candidate key(s) in the client (attempt ${attempt})`);
+        if (!assetUrl) return { key: found[0], source: 'runtime', validated: false };
+        const validated = await validateCandidate(found, assetUrl);
+        if (validated) return { key: validated, source: 'runtime', validated: true, candidates: found.length };
+        throw new Error('none of the observed keys decrypts the page assets (unsupported asset format?)');
       }
-      if (candidates.length) break;
+      log.warn(`key not observed on attempt ${attempt}/${attempts}`);
     }
-    if (!candidates.length) {
-      throw new Error(
-        'no decryption key observed: the reader did not decrypt any asset. ' +
-          'Check that the session is signed in and licensed for this book.'
-      );
-    }
-    log.debug(`observed ${candidates.length} candidate key(s) in the client`);
-
-    if (!assetUrl) return { key: candidates[0], source: 'runtime', validated: false };
-    const validated = await validateCandidate(candidates, assetUrl);
-    if (!validated) {
-      throw new Error('none of the observed keys decrypts the page assets (unsupported asset format?)');
-    }
-    return { key: validated, source: 'runtime', validated: true, candidates: candidates.length };
+    throw new Error(
+      'no decryption key observed: the reader did not decrypt any asset. ' +
+        'Check that the session is signed in and licensed for this book.'
+    );
   } finally {
     cdp.close();
     await closeTab(port, target.id).catch(() => {});
   }
+}
+
+async function waitForKeys(cdp, windowMs) {
+  const deadline = Date.now() + windowMs;
+  let candidates = [];
+  while (Date.now() < deadline) {
+    await sleep(700);
+    try {
+      const raw = await evaluate(cdp, 'JSON.stringify(window.__hoepliKeys || [])');
+      candidates = raw ? JSON.parse(raw) : [];
+    } catch {
+      candidates = [];
+    }
+    if (candidates.length) return candidates;
+  }
+  return candidates;
 }
 
 async function validateCandidate(candidates, assetUrl) {

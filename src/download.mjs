@@ -57,9 +57,18 @@ export async function downloadPages({ pages, outDir, key, concurrency = 6, keepP
       const file = path.join(outDir, `${String(page.order).padStart(5, '0')}.pdf`);
       try {
         if (fs.existsSync(file) && fs.statSync(file).size > 0) {
-          files.push(file);
-          done++;
-          continue;
+          // Resume: reuse the file only after checking it against the
+          // checksum published by the platform, otherwise fetch it again.
+          const existing = fs.readFileSync(file);
+          if (!page.md5 || md5(existing) === page.md5) {
+            files.push(file);
+            bytes += existing.length;
+            md5ok++;
+            done++;
+            continue;
+          }
+          log.warn(`cached page ${page.order} does not match the published md5, refetching`);
+          fs.rmSync(file, { force: true });
         }
         const raw = await fetchWithRetry(page.url);
         const { pdf, decrypted: wasEncrypted } = assetToPdf(raw, key);
