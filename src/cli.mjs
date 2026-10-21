@@ -28,7 +28,10 @@ import { confirm, pickBook, isInteractive, openFile } from './prompt.mjs';
 import { createProgress } from './progress.mjs';
 import { runInstall, runUninstall, repoRoot } from './install.mjs';
 
-const VERSION = '0.2.0';
+// The version always comes from package.json, so it can never drift.
+const VERSION = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+).version;
 
 function parseArgs(argv) {
   const args = { _: [] };
