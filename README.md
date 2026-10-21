@@ -221,7 +221,7 @@ optional) and read it back with `hoepli config`.
 | the launcher does nothing on GNOME | right click the `.desktop` file and choose *Allow Launching*. |
 | the PDF does not open | `xdg-open` is missing on Linux (`apt install xdg-utils`); use `--no-open` and open the file manually. |
 
-### Environment variables
+## Environment variables
 
 | Variable | Meaning |
 |---|---|
