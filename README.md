@@ -17,6 +17,36 @@ running, and turns the page assets into a single PDF.
 
 ---
 
+## Quick start
+
+```bash
+git clone https://github.com/pacale/hoepli-extract.git
+cd hoepli-extract
+npm install
+node bin/hoepli.mjs install     # global command + desktop launcher + config
+```
+
+Then, in any terminal:
+
+```bash
+hoepli                          # pick the book from a list and export it
+```
+
+The first run opens a Chrome window on the sign-in page of the platform: sign
+in there, the tool waits for the session by itself and continues. The PDF ends
+up in `~/Downloads` and opens itself.
+
+| | |
+|---|---|
+| `hoepli` | interactive menu |
+| `hoepli book Java` | export by title (or `hoepli book 4130` by id) |
+| `hoepli books` | what is in your account |
+| `hoepli info Java` | metadata and page plan, nothing is downloaded |
+| `hoepli doctor` | diagnose the environment |
+| `hoepli config` | show or change the configuration |
+
+---
+
 ## How it works
 
 ```
@@ -131,7 +161,7 @@ viewer when the export finishes.
 | `hoepli book <id\|title>` | export one book |
 | `hoepli books [--json]` | the books attached to your account |
 | `hoepli info <id\|title> [--json]` | metadata and page plan of one book, nothing is downloaded |
-| `hoepli key [--book <id>]` | prints the key the client uses, for debugging |
+| `hoepli key [--book <id\|title>]` | prints the key the client uses, for debugging |
 | `hoepli doctor [--launch]` | environment diagnostics (Chrome, DevTools port, session, network, pdf-lib) |
 | `hoepli install` / `hoepli uninstall` | global command, desktop shortcut, configuration |
 | `hoepli config [key [value]]` | show or change the configuration |
@@ -175,7 +205,21 @@ menu.
 | `port` | `9222` | DevTools port used for the session |
 | `waitLoginSec` | `600` | how long to wait for the sign-in |
 
-Change it with `hoepli config set outputDir "D:\Books"`.
+Change it with `hoepli config set outputDir "D:\Books"` (the `set` keyword is
+optional) and read it back with `hoepli config`.
+
+## Troubleshooting
+
+| Symptom | What it means and what to do |
+|---|---|
+| `the browser session is not signed in` | the Chrome instance has no valid session. The tool opens the sign-in page: sign in there. Without an interactive terminal, pass `--cookie` and `--token` by hand. |
+| `no decryption key observed` | the reader did not decrypt anything. Usually the account is not licensed for that book, or the book is published as *liquid text* (no PDF at all). Check with `hoepli info <book>`. |
+| `none of the observed keys decrypts the page assets` | the platform changed the asset format. The tool stops instead of writing a broken PDF. |
+| `cached page N does not match the published md5` | a cached file is damaged: it is deleted and downloaded again automatically. |
+| `N page(s) failed` | some pages could not be fetched. The report lists them with the reason; the PDF is still produced with the pages that worked, and the exit code is `2`. |
+| `npm link failed` | the global npm prefix is not writable: the tool installs the command in `~/.local/bin` and prints the `PATH` line to add. |
+| the launcher does nothing on GNOME | right click the `.desktop` file and choose *Allow Launching*. |
+| the PDF does not open | `xdg-open` is missing on Linux (`apt install xdg-utils`); use `--no-open` and open the file manually. |
 
 ### Environment variables
 
@@ -236,9 +280,13 @@ The end-to-end test needs a signed-in session and is documented in
 - [`docs/architecture.md`](docs/architecture.md) — the asset container format,
   the API map and the crypto flow
 
-## Note in italiano
+## Guida in italiano
 
-Il comando si installa una volta sola:
+Il tool scarica le pagine di un libro che sei autorizzato a leggere su
+HoepliAcademy+ e le unisce in **un unico PDF vettoriale** con testo
+selezionabile e indice interattivo. Funziona su **Windows, macOS e Linux**.
+
+### 1. Installazione (una volta sola)
 
 ```bash
 git clone https://github.com/pacale/hoepli-extract.git
@@ -247,27 +295,92 @@ npm install
 node bin/hoepli.mjs install
 ```
 
-Da quel momento **`hoepli`** funziona da qualunque cartella e c'è anche un
-**collegamento sul desktop**. Il flusso tipico è:
+`install` fa tre cose:
+
+- rende il comando **`hoepli`** disponibile in qualsiasi terminale (col link
+  globale npm; se il prefix globale non è scrivibile va in `~/.local/bin` e il
+  tool ti dice cosa mettere nel `PATH`);
+- scrive la configurazione in `~/.hoepli-extract/config.json`;
+- crea un **launcher sul desktop**: `Hoepli.lnk` (Windows), `Hoepli.command`
+  (macOS), `Hoepli.desktop` (Linux).
+
+In alternativa puoi lanciare il menu direttamente: doppio click su
+`Avvia-Hoepli.cmd` (Windows) o `./Avvia-Hoepli.sh` (macOS/Linux).
+
+Per disinstallare: `hoepli uninstall`.
+
+### 2. Uso quotidiano
 
 ```bash
-hoepli                  # menù: scegli il libro dalla lista
-hoepli book Java        # oppure per titolo
+hoepli                  # menù: scegli il libro dalla lista, conferma, esporta
+hoepli book Java        # oppure per titolo (o hoepli book 4130 per id)
+hoepli books            # cosa c'è nella tua libreria
+hoepli info Java        # metadati e piano di estrazione, non scarica nulla
 ```
 
-Al primo avvio si apre una finestra di Chrome con il login di HoepliAcademy+:
-**accedi lì** e il tool aspetta da solo la sessione e prosegue (non devi
-rilanciare il comando). Il PDF viene scritto in `~/Downloads` con il nome
-`<titolo> - <autore>.pdf` e aperto automaticamente. La cartella di destinazione
-si cambia con `hoepli config set outputDir "D:\Libri"`.
+Al primo avvio si apre una finestra di Chrome con il **login di
+HoepliAcademy+**: accedi lì e il tool **aspetta da solo** la sessione e
+prosegue (non devi rilanciare il comando). Nei run successivi la sessione
+viene riutilizzata.
 
-Su Windows si può anche fare doppio click su **`Avvia-Hoepli.cmd`**, su
-macOS e Linux con **`./Avvia-Hoepli.sh`**.
+Il PDF viene scritto in `~/Downloads` con il nome `<titolo> - <autore>.pdf` e
+**aperto automaticamente** alla fine. La cartella si cambia con:
 
-Il tool funziona su **Windows, macOS e Linux**: il nucleo è Node.js puro
-(senza dipendenze native), cambia solo l'installer e il launcher sul desktop
-(`.lnk` su Windows, `.command` su macOS, `.desktop` su Linux). Su un server
-senza schermo si usa `hoepli book <id> --headless`.
+```bash
+hoepli config set outputDir "D:\Libri"
+```
+
+### 3. Comandi
+
+| Comando | Cosa fa |
+|---|---|
+| `hoepli` | menù interattivo: elenco, scelta, conferma, export |
+| `hoepli book <id\|titolo>` | esporta un libro |
+| `hoepli books [--json]` | i libri del tuo account |
+| `hoepli info <id\|titolo> [--json]` | metadati e piano di estrazione |
+| `hoepli key [--book <id\|titolo>]` | mostra la chiave usata dal client (debug) |
+| `hoepli doctor [--launch]` | diagnostica dell'ambiente |
+| `hoepli install` / `hoepli uninstall` | comando globale, launcher, configurazione |
+| `hoepli config [chiave [valore]]` | mostra o modifica la configurazione |
+
+Un libro si sceglie per id o per titolo: il titolo viene cercato esattamente,
+poi per inizio, poi per frammento, poi per somiglianza; se i match sono più di
+uno si apre il menu.
+
+### 4. Opzioni utili
+
+```
+--out <file>        file di output specifico
+--out-dir <dir>     cartella di output
+--pages <a-b>       esporta solo un intervallo di pagine
+--concurrency <n>   pagine scaricate in parallelo (default 6)
+--aes-key <base64>  usa una chiave invece di catturarla a runtime
+--cookie/--token    sessione manuale, senza browser
+--port <n>          porta DevTools (default 9222)
+--headless          browser senza finestra (server)
+--open/--no-open    apre o non apre il PDF alla fine
+--yes               non chiede conferme
+--keep-pages        conserva le pagine singole
+--strict            fallisce se manca una pagina
+--report <file>     salva il report JSON
+--log-level <lvl>   debug | info | warn | error | silent
+```
+
+### 5. Se qualcosa non va
+
+- **`the browser session is not signed in`** → accedi nella finestra di Chrome
+  che si apre; senza terminale interattivo passa `--cookie` e `--token`.
+- **`no decryption key observed`** → l'account non è abilitato a quel libro,
+  oppure il libro è in "testo liquido" e non ha PDF (`hoepli info <libro>`).
+- **`N page(s) failed`** → alcune pagine non sono scaricabili; il report
+  elenca i motivi e il PDF viene comunque prodotto (exit code 2).
+- **su Linux** il `.desktop` va autorizzato una volta (click destro →
+  *Consenti l'esecuzione*); per aprire il PDF serve `xdg-utils`.
+- **su un server senza schermo**: `hoepli book <id> --headless`.
+
+Il file prodotto viene verificato pagina per pagina: header PDF, dimensione
+attesa dal server e **MD5 confrontato con quello pubblicato dalla
+piattaforma**.
 
 ## License
 

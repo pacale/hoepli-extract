@@ -452,7 +452,10 @@ async function cmdMenu(args) {
 }
 
 async function cmdConfig(args) {
-  const [key, value] = args._.slice(1);
+  const rest = args._.slice(1);
+  // accept both "hoepli config <key> <value>" and "hoepli config set <key> <value>"
+  if (rest[0] === 'set') rest.shift();
+  const [key, value] = rest;
   if (!key) {
     const config = loadConfig();
     console.log('');
@@ -465,7 +468,8 @@ async function cmdConfig(args) {
     console.log(`${key} = ${config[key]}`);
     return;
   }
-  const parsed = value === 'true' ? true : value === 'false' ? false : Number.isNaN(Number(value)) ? value : Number(value);
+  const parsed =
+    value === 'true' ? true : value === 'false' ? false : Number.isNaN(Number(value)) ? value : Number(value);
   saveConfig({ [key]: parsed });
   console.log(`  ${key} = ${parsed}`);
 }

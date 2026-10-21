@@ -4,17 +4,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadConfig, saveConfig, configPath, expandHome, DEFAULTS } from '../../src/config.mjs';
+import { main } from '../../src/cli.mjs';
 
 function withHome(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hoepli-cfg-'));
   const previous = process.env.HOEPLI_HOME;
   process.env.HOEPLI_HOME = dir;
-  try {
-    return fn(dir);
-  } finally {
+  const restore = () => {
     if (previous === undefined) delete process.env.HOEPLI_HOME;
     else process.env.HOEPLI_HOME = previous;
     fs.rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    const result = fn(dir);
+    if (result && typeof result.then === 'function') return result.finally(restore);
+    restore();
+    return result;
+  } catch (e) {
+    restore();
+    throw e;
   }
 }
 
@@ -64,5 +72,19 @@ test('clamps the concurrency to a sane range', () => {
   withHome(() => {
     assert.equal(loadConfig({ concurrency: 0 }).concurrency, DEFAULTS.concurrency);
     assert.equal(loadConfig({ concurrency: 999 }).concurrency, 16);
+  });
+});
+
+test('the config command accepts the "set" keyword', async () => {
+  await withHome(async () => {
+    await main(['config', 'set', 'outputDir', '/tmp/hoepli-books']);
+    assert.equal(loadConfig().outputDir, path.resolve('/tmp/hoepli-books'));
+  });
+});
+
+test('the config command also works without the "set" keyword', async () => {
+  await withHome(async () => {
+    await main(['config', 'concurrency', '11']);
+    assert.equal(loadConfig().concurrency, 11);
   });
 });
