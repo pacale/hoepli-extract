@@ -85,7 +85,19 @@ async function resolveSession(args, { needBrowser = true } = {}) {
     );
   }
   log.debug(`using ${names.length} platform cookie(s) from :${browser.port}`);
-  const session = await Session.fromCookieHeader(header);
+  let session;
+  try {
+    session = await Session.fromCookieHeader(header);
+  } catch (e) {
+    if (e.status === 401) {
+      await openTab(browser.port, 'https://my.hoepliacademy.it/').catch(() => {});
+      throw new SessionError(
+        'the browser session is not signed in. A Chrome window has been opened on the ' +
+          'sign-in page: sign in there and run the command again.'
+      );
+    }
+    throw e;
+  }
   return { session, browser };
 }
 
@@ -328,12 +340,12 @@ async function exportStandalone({ args, book, manifest, session, browser, starte
 export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const command = args._[0] || 'help';
-  if (args.help || command === 'help' || command === '--help') {
-    usage();
+  if (args.version || command === 'version' || command === '--version') {
+    console.log(VERSION);
     return;
   }
-  if (args.version || command === 'version') {
-    console.log(VERSION);
+  if (args.help || command === 'help' || command === '--help' || command === '-h') {
+    usage();
     return;
   }
   try {
