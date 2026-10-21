@@ -24,3 +24,9 @@ jobs:
       - run: node bin/hoepli.mjs --version
       - name: the platform launcher is generated
         run: node -e "import('./src/install.mjs').then(m => { const p = process.platform; console.log(p, m.launcherName(p)); if (!m.linuxDesktopEntry().includes('Terminal=true')) process.exit(1); })"
+      - name: the doctor runs on this platform
+        run: node bin/hoepli.mjs doctor
+      - name: the installer runs on this platform
+        run: node bin/hoepli.mjs install
+      - name: the uninstaller runs on this platform
+        run: node bin/hoepli.mjs uninstall
