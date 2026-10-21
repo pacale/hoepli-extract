@@ -1,0 +1,30 @@
+{
+  "name": "hoepli-extract",
+  "version": "0.1.0",
+  "description": "Download and merge the pages of a book you are licensed to read on HoepliAcademy+ into a single vector PDF.",
+  "type": "module",
+  "bin": {
+    "hoepli": "bin/hoepli.mjs"
+  },
+  "exports": {
+    ".": "./src/cli.mjs"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/unit/*.test.mjs\"",
+    "test:e2e": "node test/e2e/run-e2e.mjs",
+    "lint": "node --check bin/hoepli.mjs"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
+  "license": "MIT",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pacale/hoepli-extract.git"
+  },
+  "keywords": ["pdf", "hoepli", "ebook", "offline"]
+}

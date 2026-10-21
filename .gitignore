@@ -1,0 +1,23 @@
+node_modules/
+npm-debug.log*
+*.tgz
+
+# local state and downloaded material
+out/
+*.pdf
+*.pdf.pages/
+hoepli-report*.json
+report*.json
+
+# credentials: never commit these
+.env
+.env.local
+cookies.txt
+*.cookie
+*.session
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
