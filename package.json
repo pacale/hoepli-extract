@@ -19,7 +19,8 @@
     "README.md",
     "LICENSE",
     "NOTICE",
-    "Avvia-Hoepli.cmd"
+    "Avvia-Hoepli.cmd",
+    "Avvia-Hoepli.sh"
   ],
   "scripts": {
     "test": "node --test \"test/unit/*.test.mjs\"",

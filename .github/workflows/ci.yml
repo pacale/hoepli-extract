@@ -8,10 +8,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
@@ -21,3 +22,5 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: node bin/hoepli.mjs --version
+      - name: the platform launcher is generated
+        run: node -e "import('./src/install.mjs').then(m => { const p = process.platform; console.log(p, m.launcherName(p)); if (!m.linuxDesktopEntry().includes('Terminal=true')) process.exit(1); })"

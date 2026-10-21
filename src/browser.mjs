@@ -109,13 +109,22 @@ export function chromeCandidates() {
   const list = [];
   if (process.env.HOEPLI_CHROME) list.push(process.env.HOEPLI_CHROME);
   const roots = [
+    // Windows
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     path.join(os.homedir(), 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'),
+    // macOS
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    path.join(os.homedir(), 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
+    // Linux
     '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/snap/bin/chromium',
+    '/var/lib/flatpak/exports/bin/com.google.Chrome',
+    '/var/lib/flatpak/exports/bin/org.chromium.Chromium',
   ];
   for (const p of roots) if (fs.existsSync(p)) list.push(p);
   return list;
@@ -168,7 +177,6 @@ export async function ensureBrowser(options = {}) {
   if (found) return found;
   return launchBrowser({ url: options.url ?? 'https://my.hoepliacademy.it/', ...options });
 }
-
 /** Browser-level WebSocket URL, used for cookie access. */
 export async function browserWsUrl(port) {
   const version = await httpJson(port, '/json/version');

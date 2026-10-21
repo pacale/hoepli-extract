@@ -70,6 +70,7 @@ Options
   --cookie <string>   session cookie (otherwise read from the browser)
   --token <string>    AUTH_TOKEN (otherwise read from the account)
   --port <n>          DevTools port to use (default 9222)
+  --headless          start the dedicated browser without a window (servers)
   --open / --no-open  open the PDF when the export finishes
   --yes               do not ask for confirmation
   --no-toc            do not build the outline
@@ -107,7 +108,11 @@ async function resolveSession(args, config, { needBrowser = true } = {}) {
   if (!needBrowser) throw new SessionError('no session: pass --cookie or run with a browser available');
 
   const port = config.port;
-  const browser = await ensureBrowser({ port, url: `${READER_BASE}/` });
+  const browser = await ensureBrowser({
+    port,
+    url: `${READER_BASE}/`,
+    headless: Boolean(args.headless),
+  });
   const probe = async () => {
     const { header } = await readCookies(browser.port);
     if (!header) return null;
@@ -244,7 +249,7 @@ async function cmdInfo(args) {
 async function cmdKey(args) {
   const config = configFromArgs(args);
   const port = config.port;
-  const browser = await ensureBrowser({ port, url: `${READER_BASE}/` });
+  const browser = await ensureBrowser({ port, url: `${READER_BASE}/`, headless: Boolean(args.headless) });
   let assetUrl = null;
   let bookId = Number(args.book || 4130);
   try {

@@ -44,6 +44,10 @@ captured for the book you are actually reading.
   profile in `~/.hoepli-extract/chrome-profile`
 - A **HoepliAcademy+ account** that is licensed for the book you want to export
 
+Supported platforms: **Windows, macOS and Linux** (the core is plain Node.js
+with no native dependencies; only the installer and the desktop launcher differ
+per platform).
+
 ## Install
 
 ```bash
@@ -55,13 +59,38 @@ node bin/hoepli.mjs install
 
 `install` does three things:
 
-- runs `npm link`, so **`hoepli` is available in every terminal**;
+- runs `npm link`, so **`hoepli` is available in every terminal** (if the
+  global npm prefix is not writable it falls back to `~/.local/bin` and tells
+  you to add it to your `PATH`);
 - writes `~/.hoepli-extract/config.json` (default output folder: `~/Downloads`);
-- creates a **shortcut on your desktop** that opens the interactive menu.
+- creates a **desktop launcher**:
+  - Windows: `Hoepli.lnk`
+  - macOS: `Hoepli.command`
+  - Linux: `Hoepli.desktop` (GNOME may ask you to allow it: right click →
+    *Allow Launching*)
 
-On Windows you can also just double click **`Avvia-Hoepli.cmd`**.
+You can also start the menu directly:
 
-To undo it: `hoepli uninstall`.
+- Windows: double click `Avvia-Hoepli.cmd`
+- macOS / Linux: `./Avvia-Hoepli.sh` (or `sh Avvia-Hoepli.sh`)
+
+To undo the installation: `hoepli uninstall`.
+
+### Linux notes
+
+- Chrome is looked up in the usual places (`google-chrome`, `chromium`, the
+  snap and the flatpak paths). Override it with `HOEPLI_CHROME=/path/to/chrome`.
+- On a machine without a display (a server) use `hoepli book <id> --headless`
+  or set `display` with Xvfb.
+- `xdg-open` is used to open the finished PDF; install `xdg-utils` if it is
+  missing.
+
+### macOS notes
+
+- The first launch of Chrome may show the usual Gatekeeper prompt: accept it.
+- `open` is used to open the finished PDF.
+- The `.command` launcher needs the executable bit, which the repository
+  already carries.
 
 ## Usage
 
@@ -122,6 +151,7 @@ menu.
 --cookie <string>   session cookie (otherwise read from the browser)
 --token <string>    AUTH_TOKEN (otherwise read from the account)
 --port <n>          DevTools port to use (default 9222)
+--headless          start the dedicated browser without a window (servers)
 --open / --no-open  open the PDF when the export finishes
 --yes               do not ask for confirmation
 --no-toc            do not build the outline
@@ -231,7 +261,13 @@ rilanciare il comando). Il PDF viene scritto in `~/Downloads` con il nome
 `<titolo> - <autore>.pdf` e aperto automaticamente. La cartella di destinazione
 si cambia con `hoepli config set outputDir "D:\Libri"`.
 
-Su Windows si può anche fare doppio click su **`Avvia-Hoepli.cmd`**.
+Su Windows si può anche fare doppio click su **`Avvia-Hoepli.cmd`**, su
+macOS e Linux con **`./Avvia-Hoepli.sh`**.
+
+Il tool funziona su **Windows, macOS e Linux**: il nucleo è Node.js puro
+(senza dipendenze native), cambia solo l'installer e il launcher sul desktop
+(`.lnk` su Windows, `.command` su macOS, `.desktop` su Linux). Su un server
+senza schermo si usa `hoepli book <id> --headless`.
 
 ## License
 
