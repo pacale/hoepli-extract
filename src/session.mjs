@@ -7,7 +7,7 @@
 // The token is short lived and rotated by the server, so it is always fetched
 // fresh instead of being persisted.
 
-import { log, redact, USER_AGENT } from './util.mjs';
+import { log, redact, USER_AGENT, sleep } from './util.mjs';
 
 export const API_BASE = 'https://www.hoepliacademy.it';
 export const READER_BASE = 'https://my.hoepliacademy.it';
@@ -87,4 +87,27 @@ export class Session {
     if (!session.token) await session.refreshToken();
     return session;
   }
+}
+
+/**
+ * Wait until the browser session becomes valid.
+ *
+ * The browser is polled every two seconds; the caller supplies the probe so
+ * the behaviour can be tested without a browser.
+ */
+export async function waitForAuthentication({ timeoutSec = 600, probe, onTick = () => {} }) {
+  const deadline = Date.now() + timeoutSec * 1000;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    attempt++;
+    try {
+      const session = await probe();
+      if (session) return session;
+    } catch (e) {
+      if (e.status && e.status !== 401) throw e;
+    }
+    onTick(attempt, Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    await sleep(2000);
+  }
+  throw new SessionError(`no valid session after ${timeoutSec} seconds`);
 }

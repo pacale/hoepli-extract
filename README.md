@@ -47,48 +47,83 @@ captured for the book you are actually reading.
 ## Install
 
 ```bash
+git clone https://github.com/pacale/hoepli-extract.git
+cd hoepli-extract
 npm install          # one dependency: pdf-lib
+node bin/hoepli.mjs install
 ```
+
+`install` does three things:
+
+- runs `npm link`, so **`hoepli` is available in every terminal**;
+- writes `~/.hoepli-extract/config.json` (default output folder: `~/Downloads`);
+- creates a **shortcut on your desktop** that opens the interactive menu.
+
+On Windows you can also just double click **`Avvia-Hoepli.cmd`**.
+
+To undo it: `hoepli uninstall`.
 
 ## Usage
 
 ```bash
-# 0. check the environment
-node bin/hoepli.mjs doctor --launch
-
-# 1. list the books of your account
-node bin/hoepli.mjs books
-
-# 2. inspect a book without downloading anything
-node bin/hoepli.mjs info 4130
-
-# 3. export it
-node bin/hoepli.mjs book 4130 --out "Java.pdf"
+hoepli                              # interactive menu: pick a book, export it
+hoepli book Java                    # export by title (or by id: hoepli book 4130)
+hoepli books                        # what is in your account
+hoepli info Java                    # metadata and page plan, nothing downloaded
+hoepli config                       # show the configuration
 ```
 
-The first run opens a Chrome window on the platform sign-in page. Sign in
-there; every later run reuses that session.
+The first run opens a Chrome window on the platform sign-in page: sign in
+there. The tool waits for the session by itself and continues — no need to
+run the command twice. Every later run reuses that session.
+
+The interactive menu looks like this:
+
+```
+  I tuoi libri
+   1) Java — Claudio De Sio Cesari  [706 pp · ebook]
+
+  Scegli il libro (numero o titolo, vuoto per annullare): 1
+  Esporto "Java" (706 pagine) in C:\Users\...\Downloads? [Y/n]
+
+[####################] 100%  706/706  34.9 MB  2.4 MB/s
+  706 pagine unite, 33 segnalibri
+  aperto: C:\Users\...\Downloads\Java - Claudio De Sio Cesari.pdf
+```
+
+The PDF is named `<title> - <author>.pdf` and opened with the system default
+viewer when the export finishes.
 
 ### Commands
 
 | Command | What it does |
 |---|---|
-| `hoepli doctor [--launch]` | environment diagnostics (Chrome, DevTools port, session, network, pdf-lib) |
+| `hoepli` | interactive menu: list, pick, confirm, export |
+| `hoepli book <id\|title>` | export one book |
 | `hoepli books [--json]` | the books attached to your account |
-| `hoepli info <bookId> [--json]` | metadata and page plan of one book, nothing is downloaded |
-| `hoepli key [--book <bookId>]` | prints the key the client uses, for debugging |
-| `hoepli book <bookId> --out <file.pdf>` | download, decrypt, merge, verify |
+| `hoepli info <id\|title> [--json]` | metadata and page plan of one book, nothing is downloaded |
+| `hoepli key [--book <id>]` | prints the key the client uses, for debugging |
+| `hoepli doctor [--launch]` | environment diagnostics (Chrome, DevTools port, session, network, pdf-lib) |
+| `hoepli install` / `hoepli uninstall` | global command, desktop shortcut, configuration |
+| `hoepli config [key [value]]` | show or change the configuration |
+
+A book can be selected by id or by title; titles are matched exactly, then by
+prefix, then by fragment, then by similarity, and an ambiguous match opens the
+menu.
 
 ### Options
 
 ```
---out <file>        output PDF (default ./<title>-<id>.pdf)
+--out <file>        output PDF (default: <outputDir>/<title> - <author>.pdf)
+--out-dir <dir>     output folder (default: ~/Downloads)
 --pages <a-b>       export only that range of pages
 --concurrency <n>   parallel asset downloads (default 6)
 --aes-key <base64>  use this key instead of capturing it at runtime
 --cookie <string>   session cookie (otherwise read from the browser)
 --token <string>    AUTH_TOKEN (otherwise read from the account)
 --port <n>          DevTools port to use (default 9222)
+--open / --no-open  open the PDF when the export finishes
+--yes               do not ask for confirmation
 --no-toc            do not build the outline
 --no-merge          keep the single page files, skip merging
 --keep-pages        keep the single page files next to the output
@@ -97,6 +132,20 @@ there; every later run reuses that session.
 --report <file>     write the JSON report
 --log-level <lvl>   debug | info | warn | error | silent
 ```
+
+### Configuration
+
+`~/.hoepli-extract/config.json`:
+
+| key | default | meaning |
+|---|---|---|
+| `outputDir` | `~/Downloads` | where the PDFs are written |
+| `concurrency` | `6` | parallel asset downloads |
+| `openAfter` | `true` | open the PDF when the export finishes |
+| `port` | `9222` | DevTools port used for the session |
+| `waitLoginSec` | `600` | how long to wait for the sign-in |
+
+Change it with `hoepli config set outputDir "D:\Books"`.
 
 ### Environment variables
 
@@ -156,6 +205,33 @@ The end-to-end test needs a signed-in session and is documented in
 
 - [`docs/architecture.md`](docs/architecture.md) — the asset container format,
   the API map and the crypto flow
+
+## Note in italiano
+
+Il comando si installa una volta sola:
+
+```bash
+git clone https://github.com/pacale/hoepli-extract.git
+cd hoepli-extract
+npm install
+node bin/hoepli.mjs install
+```
+
+Da quel momento **`hoepli`** funziona da qualunque cartella e c'è anche un
+**collegamento sul desktop**. Il flusso tipico è:
+
+```bash
+hoepli                  # menù: scegli il libro dalla lista
+hoepli book Java        # oppure per titolo
+```
+
+Al primo avvio si apre una finestra di Chrome con il login di HoepliAcademy+:
+**accedi lì** e il tool aspetta da solo la sessione e prosegue (non devi
+rilanciare il comando). Il PDF viene scritto in `~/Downloads` con il nome
+`<titolo> - <autore>.pdf` e aperto automaticamente. La cartella di destinazione
+si cambia con `hoepli config set outputDir "D:\Libri"`.
+
+Su Windows si può anche fare doppio click su **`Avvia-Hoepli.cmd`**.
 
 ## License
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { redact, safeName, formatBytes } from '../../src/util.mjs';
+import { redact, safeName, safeText, formatBytes } from '../../src/util.mjs';
 import { mergePages, readOutline } from '../../src/merge.mjs';
 import { verifyOutput } from '../../src/verify.mjs';
 import { makePdf, makeContainer, TEST_KEY_B64 } from '../helpers/fixture.mjs';
@@ -19,6 +19,11 @@ test('redacts session material from log text', () => {
 test('builds safe file names', () => {
   assert.equal(safeName('Programmazione Java — "De Sio"'), 'Programmazione-Java-De-Sio');
   assert.equal(safeName(''), 'book');
+});
+
+test('keeps spaces in the author part of a file name', () => {
+  assert.equal(safeText('Claudio De Sio Cesari'), 'Claudio De Sio Cesari');
+  assert.equal(safeText('a/b:c'), 'a-b-c');
 });
 
 test('formats byte counts', () => {

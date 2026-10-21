@@ -89,6 +89,7 @@ export async function downloadPages({ pages, outDir, key, concurrency = 6, keepP
 
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
   files.sort();
+  if (onProgress) onProgress({ done, total: pages.length, bytes });
   if (!keepPages) {
     for (const f of files) fs.rmSync(f, { force: true });
   }

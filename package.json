@@ -1,6 +1,6 @@
 {
   "name": "hoepli-extract",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Download and merge the pages of a book you are licensed to read on HoepliAcademy+ into a single vector PDF.",
   "type": "module",
   "bin": {
@@ -12,6 +12,15 @@
   "engines": {
     "node": ">=20.6.0"
   },
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "Avvia-Hoepli.cmd"
+  ],
   "scripts": {
     "test": "node --test \"test/unit/*.test.mjs\"",
     "test:e2e": "node test/e2e/run-e2e.mjs",

@@ -67,6 +67,18 @@ export function safeName(text, fallback = 'book') {
   return cleaned || fallback;
 }
 
+/** Keeps spaces: used for the author part of a file name. */
+export function safeText(text, fallback = '') {
+  const cleaned = String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
 export function formatBytes(n) {
   if (!Number.isFinite(n)) return 'n/a';
   const units = ['B', 'KB', 'MB', 'GB'];
